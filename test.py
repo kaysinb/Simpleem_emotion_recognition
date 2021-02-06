@@ -7,12 +7,11 @@ from src.students import Student
 from src.pose_estimation import PoseEstimation
 
 
-def main(video_path=0, save_video=False):
-    path = '../../er_test/photos'
+def main(photos_path, video_path=0, show_video=False, save_video=False):
     faces_recognizer = FacesRecognition(resize=0.7, max_face_tilt=10)
     emotions_recognizer = EmotionsRecognition()
 
-    students_dirs = [f for f in os.scandir(path) if f.is_dir()]  # Folders for every student in path
+    students_dirs = [f for f in os.scandir(photos_path) if f.is_dir()]  # Folders for every student in path
     emotions_list = emotions_recognizer.emotions
 
     for one_student in students_dirs:
@@ -113,7 +112,8 @@ def main(video_path=0, save_video=False):
             if save_video:
                 out_video.write(frame)
 
-            cv2.imshow('meeting', frame)
+            if show_video:
+                cv2.imshow('meeting', frame)
 
             # Press Q on keyboard to  exit
             if cv2.waitKey(25) & 0xFF == ord('q'):
@@ -125,4 +125,4 @@ def main(video_path=0, save_video=False):
 
 
 if __name__ == '__main__':
-    main()
+    main(photos_path='../../er_test/photos', show_video=True)
