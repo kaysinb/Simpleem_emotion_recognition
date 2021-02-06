@@ -8,7 +8,7 @@ from src.pose_estimation import PoseEstimation
 
 
 def main(photos_path, video_path=0, show_video=False, save_video=False):
-    faces_recognizer = FacesRecognition(resize=0.7, max_face_tilt=10)
+    faces_recognizer = FacesRecognition(resize=0.5, max_face_tilt=10)
     emotions_recognizer = EmotionsRecognition()
 
     students_dirs = [f for f in os.scandir(photos_path) if f.is_dir()]  # Folders for every student in path
@@ -19,6 +19,8 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
 
     # Create a VideoCapture object and read from input file
     cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_step = fps//25
 
     if video_path == 0:
         cap.set(3, 1280)
@@ -35,7 +37,7 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
     if save_video:
         # Create a VideoCapture object and read from input file
         fourcc = cv2.VideoWriter_fourcc('F', 'M', 'P', '4')
-        out_video = cv2.VideoWriter('./output_video.mp4', fourcc, 25, (frame_width, frame_height))
+        out_video = cv2.VideoWriter('./output_video.mp4', fourcc, fps//frame_step, (frame_width, frame_height))
 
     firs_frame = 0  # first frame
     last_frame = None
@@ -59,7 +61,7 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
         # Capture frame-by-frame
         ret, frame = cap.read()
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        if ret and i % 1 == 0:
+        if ret and i % frame_step == 0:
             if flag:
 
                 faces_recognizer(frame, Student)
@@ -125,4 +127,5 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
 
 
 if __name__ == '__main__':
-    main(photos_path='../../er_test/photos', show_video=True)
+    main(video_path=0, photos_path='../../er_test/photos', show_video=True, save_video=True)
+

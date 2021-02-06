@@ -43,8 +43,8 @@ class Student:
         self.pose_stabilizers = [Stabilizer(
             state_num=2,
             measure_num=1,
-            cov_process=1,
-            cov_measure=0.0001) for _ in range(6)]
+            cov_process=0.01,
+            cov_measure=1) for _ in range(6)]
 
         # Generate embeddings for each student
 

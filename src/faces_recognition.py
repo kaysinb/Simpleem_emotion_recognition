@@ -146,7 +146,7 @@ class FacesRecognition:
             recognized_students = self.compare_faces(embeddings,
                                                      student.embeddings,
                                                      student.names,
-                                                     tolerance=0.9)
+                                                     tolerance=1.1)
 
         for name in student.group:
             if name in recognized_students:
