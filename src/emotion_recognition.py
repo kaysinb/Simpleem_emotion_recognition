@@ -10,7 +10,7 @@ class EmotionsRecognition:
     def __init__(self):
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.emotions = ['angry', 'scared', 'happy', 'neutral', 'sad']
-        model_path = '../../er_test/public_model_89_63.t7'
+        model_path = './models/public_model_89_63.t7'
         self.net = Model(num_classes=len(self.emotions))
         checkpoint = torch.load(model_path, map_location=torch.device(self.device))
         self.net.load_state_dict(checkpoint['net'])
