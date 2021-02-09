@@ -98,7 +98,7 @@ class FacesRecognition:
                 face = frame[y_t:y_b, x_l:x_r, :]
                 face = cv2.resize(face, (160, 160))
 
-            batch_cropped_faces.append(torch.FloatTensor(face.transpose((2, 0, 1)) / 255.0))
+            batch_cropped_faces.append(torch.FloatTensor((face.transpose((2, 0, 1)) - 127.5) / 128))
         return batch_cropped_faces
 
     def faces_detection(self, frame):
@@ -146,13 +146,13 @@ class FacesRecognition:
             recognized_students = self.compare_faces(embeddings,
                                                      student.embeddings,
                                                      student.names,
-                                                     tolerance=1.1)
+                                                     tolerance=1.0)
 
         for name in student.group:
             if name in recognized_students:
                 student_index = recognized_students.index(name)
                 student.group[name].face_coordinates = faces_coordinates[student_index]
-                student.group[name].face_image = np.array(batch_cropped_faces[student_index] * 255,
+                student.group[name].face_image = np.array(batch_cropped_faces[student_index] * 128 + 127.5,
                                                           dtype='uint8').transpose((1, 2, 0))
                 student.group[name].landmarks = landmarks[student_index]
             else:

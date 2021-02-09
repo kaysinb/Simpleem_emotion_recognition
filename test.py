@@ -118,7 +118,7 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
                 cv2.imshow('meeting', frame)
 
             # Press Q on keyboard to  exit
-            if cv2.waitKey(25) & 0xFF == ord('q'):
+            if cv2.waitKey(2) & 0xFF == ord('q'):
                 break
         i += 1
 
