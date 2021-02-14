@@ -4,6 +4,7 @@ import cv2
 from models.mtcnn import MTCNN
 from models.inception_resnet_v1 import InceptionResnetV1
 from PIL import Image
+import time
 
 
 class FacesRecognition:
@@ -19,6 +20,8 @@ class FacesRecognition:
         self.mtcnn = MTCNN(image_size=160, keep_all=True, device=self.device, post_process=False)
         self.resnet = InceptionResnetV1(pretrained='vggface2').eval().to(self.device)
         self.max_face_tilt = max_face_tilt
+        self.to_m1p1 = lambda x: (x - 127.5) / 128
+        self.from_m1p1 = lambda x: x * 128 + 127.5
 
     def __call__(self, frame, students):
         self.faces_recognition(frame, students)
@@ -98,7 +101,7 @@ class FacesRecognition:
                 face = frame[y_t:y_b, x_l:x_r, :]
                 face = cv2.resize(face, (160, 160))
 
-            batch_cropped_faces.append(torch.FloatTensor((face.transpose((2, 0, 1)) - 127.5) / 128))
+            batch_cropped_faces.append(torch.FloatTensor(self.to_m1p1(face.transpose((2, 0, 1)))))
         return batch_cropped_faces
 
     def faces_detection(self, frame):
@@ -124,15 +127,25 @@ class FacesRecognition:
     @staticmethod
     def compare_faces(face_embeddings_to_check, students_embeddings, students_names, tolerance=0.9):
 
-        recognized_students = []
-        for embedding in face_embeddings_to_check:
+        recognized_embeddings = ['unknown']*len(face_embeddings_to_check)
+        norm_matrix = np.zeros((len(face_embeddings_to_check), students_embeddings.shape[0],
+                                students_embeddings.shape[2])) + tolerance * 2
+
+        for i, embedding in enumerate(face_embeddings_to_check):
             embedding = np.expand_dims(embedding, axis=1)
-            norm_matrix = np.linalg.norm(students_embeddings - embedding, axis=1)
+            norm_matrix[i] = np.linalg.norm(students_embeddings - embedding, axis=1)
+
+        for i in range(min(norm_matrix.shape[0], norm_matrix.shape[1])):
             min_dist = np.min(norm_matrix)
+
             if min_dist < tolerance:
-                name_index = np.argwhere(norm_matrix == min_dist)[0, 0]
-                recognized_students.append(students_names[name_index])
-        return recognized_students
+                student_index = np.argwhere(norm_matrix == min_dist)[0]
+                recognized_embeddings[student_index[0]] = students_names[student_index[1]]
+                norm_matrix[student_index[0]] = tolerance * 2
+                norm_matrix[:, student_index[1]] = tolerance * 2
+            else:
+                break
+        return recognized_embeddings
 
     def faces_recognition(self, frame, student):
         faces_coordinates, landmarks = self.faces_detection(frame)
@@ -143,6 +156,7 @@ class FacesRecognition:
             batch_cropped_faces = self.get_batch_cropped_faces(frame,
                                                                faces_coordinates, landmarks)
             embeddings = self.get_embeddings(batch_cropped_faces)
+
             recognized_students = self.compare_faces(embeddings,
                                                      student.embeddings,
                                                      student.names,
@@ -152,7 +166,7 @@ class FacesRecognition:
             if name in recognized_students:
                 student_index = recognized_students.index(name)
                 student.group[name].face_coordinates = faces_coordinates[student_index]
-                student.group[name].face_image = np.array(batch_cropped_faces[student_index] * 128 + 127.5,
+                student.group[name].face_image = np.array(self.from_m1p1(batch_cropped_faces[student_index]),
                                                           dtype='uint8').transpose((1, 2, 0))
                 student.group[name].landmarks = landmarks[student_index]
             else:

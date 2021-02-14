@@ -5,6 +5,7 @@ from src.faces_recognition import FacesRecognition
 from src.emotion_recognition import EmotionsRecognition
 from src.students import Student
 from src.pose_estimation import PoseEstimation
+from src.display_text import DisplayText
 
 
 def main(photos_path, video_path=0, show_video=False, save_video=False):
@@ -20,7 +21,7 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
     # Create a VideoCapture object and read from input file
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_step = fps//25
+    frame_step = fps//10
 
     if video_path == 0:
         cap.set(3, 1280)
@@ -31,13 +32,14 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
         print("Error opening video stream or file")
 
     frame = cap.read()[1]
-    frame_height, frame_width = frame.shape[:2]
     pose_estimator = PoseEstimation(img_size=frame.shape[0:2])
+    text_displayer = DisplayText(frame.shape)
 
     if save_video:
         # Create a VideoCapture object and read from input file
         fourcc = cv2.VideoWriter_fourcc('F', 'M', 'P', '4')
-        out_video = cv2.VideoWriter('./output_video.mp4', fourcc, fps//frame_step, (frame_width, frame_height))
+        out_video = cv2.VideoWriter('./output_video.mp4', fourcc, fps//frame_step, (text_displayer.full_frame_shape[1],
+                                                                                    text_displayer.full_frame_shape[0]))
 
     firs_frame = 0  # first frame
     last_frame = None
@@ -52,7 +54,7 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
 
     stride = 1  # we will recognize only every 'stride' frame for saving time
     i = 0  # counter
-
+    text = 'hi'
     while cap.isOpened() and firs_frame + i < last_frame:
         flag = False
         if i % stride == 0:
@@ -104,18 +106,21 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
                         one_student.landmarks[0][0] - (one_student.landmarks[1][0] - one_student.landmarks[0][0]))
 
                     emotion = emotions_list[np.argmax(one_student.emotions)]
-                    cv2.putText(frame, student_name + ' is ' + emotion, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX , 0.8, (0,0,255), 1, 255)
+                    text = student_name + ' is ' + emotion
+                    cv2.putText(frame, text, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX , 0.8, (0,0,255), 1, 255)
 
                     for point in one_student.landmarks:
                         cv2.circle(frame, (int(point[0]), int(point[1])), 3, (0, 0, 255), -1)
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
+            full_frame = text_displayer.show_text(frame, text)
+
             if save_video:
-                out_video.write(frame)
+                out_video.write(full_frame)
 
             if show_video:
-                cv2.imshow('meeting', frame)
+                cv2.imshow('meeting', full_frame)
 
             # Press Q on keyboard to  exit
             if cv2.waitKey(2) & 0xFF == ord('q'):
@@ -127,5 +132,7 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
 
 
 if __name__ == '__main__':
-    main(video_path=0, photos_path='../../er_test/photos', show_video=True, save_video=True)
+    # main(video_path=0, photos_path='../../er_test/photos', show_video=True, save_video=True)
+    main(video_path='../../er_test/test_video.mp4', photos_path='../../er_test/photos', show_video=True, save_video=True)
+
 
