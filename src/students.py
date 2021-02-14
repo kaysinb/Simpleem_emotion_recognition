@@ -114,8 +114,8 @@ class Student:
         self._stable_pose = steady_pose
 
     # Methods for logging
-    def logging(self):
-        """ Emotions and pose logging for frame """
+    def logging(self, time_of_log = None):
+        """ Emotions and pose logging for frame for one student"""
 
         if self.face_coordinates is None:
             self._stud_is_on_frame.appendleft(False)
@@ -123,9 +123,21 @@ class Student:
         else:
             self._stud_is_on_frame.appendleft(True)
             self._angle_logg.appendleft(PoseEstimation.rot_params_rv(self._pose[0]))
-
-        self._logging_time.appendleft(time.time())
+        
+        if time_of_log is None:
+            self._logging_time.appendleft(time.time())
+        else:
+            self._logging_time.appendleft(time_of_log)
+        
         self._emotion_logg.appendleft(self.emotions)
+    
+    @classmethod
+    def logging_of_group(cls):
+        """ Emotions and pose logging for frame for whole students group. """
+        mutual_log_time = time.time()
+
+        for student_name in cls.group:
+            cls.group[student_name].logging(time_of_log = mutual_log_time)
 
     def get_student_logs(self):
         """ Getting total logs for one of the student """
@@ -135,6 +147,31 @@ class Student:
         angle_df = pd.DataFrame(list(self._angle_logg), columns=['roll', 'pitch', 'yaw'])
         onframe_df = pd.DataFrame(list(self._stud_is_on_frame), columns=['is_on_frame'])
 
-        output_df = pd.concat([time_df, emotion_df, angle_df, onframe_df], axis=1)
+        pose_df = pd.concat([time_df, angle_df, onframe_df], axis=1)
+        emotion_df = pd.concat([time_df, emotion_df], axis=1)
 
-        return output_df
+        return pose_df, emotion_df
+    
+    @classmethod
+    def get_group_log(cls):
+        """ Getting total log for the whole group in dataframe form """
+        total_log = {}
+        for student_name in cls.group:
+            total_log[student_name] = cls.group[student_name].get_student_logs()
+        
+        return total_log
+    
+    @classmethod
+    def get_one_frame_log(cls):
+        total_log = {}
+        for student_name in cls.group:
+            time_df = pd.DataFrame(list(self._logging_time[-1]), columns=['time'])
+            emotion_df = pd.DataFrame(list(self._emotion_logg[-1]), columns=self.list_of_emotions)
+            angle_df = pd.DataFrame(list(self._angle_logg[-1]), columns=['roll', 'pitch', 'yaw'])
+            onframe_df = pd.DataFrame(list(self._stud_is_on_frame[-1]), columns=['is_on_frame'])
+
+            pose_df = pd.concat([time_df, angle_df, onframe_df], axis=1)
+            emotion_df = pd.concat([time_df, emotion_df], axis=1)
+            total_log[student_name] = (pose_df, emotion_df)
+        
+        return total_log

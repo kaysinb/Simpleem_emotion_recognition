@@ -6,6 +6,7 @@ from src.emotion_recognition import EmotionsRecognition
 from src.students import Student
 from src.pose_estimation import PoseEstimation
 from src.display_text import DisplayText
+from src.emotionsStatisticsGUI import show_statistic_window
 
 
 def main(photos_path, video_path=0, show_video=False, save_video=False):
@@ -75,8 +76,10 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
                     if one_student.landmarks is not None:
                         m = one_student.landmarks
                         one_student.pose = pose_estimator.solve_pose(m)
+                    
+                    Student.logging_of_group()
 
-                    one_student.logging()
+                    
 
             for student_name in Student.group:
                 if Student.group[student_name].face_coordinates is not None:
@@ -129,6 +132,8 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
 
     cap.release()
     cv2.destroyAllWindows()
+    
+    show_statistic_window(Student.get_group_log())
 
 
 if __name__ == '__main__':
