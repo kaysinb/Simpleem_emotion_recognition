@@ -6,6 +6,7 @@ import pandas as pd
 from collections import deque
 from src.pose_estimation import Stabilizer
 from src.pose_estimation import PoseEstimation
+import itertools
 
 
 class Student:
@@ -32,13 +33,25 @@ class Student:
         self.emotions = None
 
         # Properties which is used for logging
-        self._emotion_logg = deque()
-        self._angle_logg = deque()
-        self._logging_time = deque()
-        self._stud_is_on_frame = deque()
+        self._emotion_logg = []
+        self._angle_logg = []
+        self._logging_time = []
+        self._stud_is_on_frame = []
 
         # Service properties
         self.list_of_emotions = list_of_emotions
+        self.list_of_pos_emotions = ['neutral','happy']
+        self.indexes_of_pos_emotions = []
+        
+        # Init of indexes of positive and negative emotions
+        for item in self.list_of_pos_emotions:
+            try:
+                self.indexes_of_pos_emotions.append(self.list_of_emotions.index(item))
+            except ValueError:
+                print('Positive emotion {} is not in list of emotions'.format(item))
+        #all_idexes = list(range(len(self.list_of_emotions)))
+        self.indexes_of_neg_emotions = [index for index in range(len(self.list_of_emotions)) if index not in self.indexes_of_pos_emotions]
+        self.frame_color = (0,0,255)
 
         self.pose_stabilizers = [Stabilizer(
             state_num=2,
@@ -118,18 +131,18 @@ class Student:
         """ Emotions and pose logging for frame for one student"""
 
         if self.face_coordinates is None:
-            self._stud_is_on_frame.appendleft(False)
-            self._angle_logg.appendleft([None] * 3)
+            self._stud_is_on_frame.append(False)
+            self._angle_logg.append([None] * 3)
         else:
-            self._stud_is_on_frame.appendleft(True)
-            self._angle_logg.appendleft(PoseEstimation.rot_params_rv(self._pose[0]))
+            self._stud_is_on_frame.append(True)
+            self._angle_logg.append(PoseEstimation.rot_params_rv(self._pose[0]))
         
         if time_of_log is None:
-            self._logging_time.appendleft(time.time())
+            self._logging_time.append(time.time())
         else:
-            self._logging_time.appendleft(time_of_log)
+            self._logging_time.append(time_of_log)
         
-        self._emotion_logg.appendleft(self.emotions)
+        self._emotion_logg.append(self.emotions)
     
     @classmethod
     def logging_of_group(cls):
@@ -160,18 +173,101 @@ class Student:
             total_log[student_name] = cls.group[student_name].get_student_logs()
         
         return total_log
+
     
     @classmethod
-    def get_one_frame_log(cls):
-        total_log = {}
-        for student_name in cls.group:
-            time_df = pd.DataFrame(list(self._logging_time[-1]), columns=['time'])
-            emotion_df = pd.DataFrame(list(self._emotion_logg[-1]), columns=self.list_of_emotions)
-            angle_df = pd.DataFrame(list(self._angle_logg[-1]), columns=['roll', 'pitch', 'yaw'])
-            onframe_df = pd.DataFrame(list(self._stud_is_on_frame[-1]), columns=['is_on_frame'])
-
-            pose_df = pd.concat([time_df, angle_df, onframe_df], axis=1)
-            emotion_df = pd.concat([time_df, emotion_df], axis=1)
-            total_log[student_name] = (pose_df, emotion_df)
+    def comma_sep_str(cls, list_of_str):
+        """ Convert list of strings to one string separated by comma.
+            It is used for recomendation strings forming.
+        """
+        output_str = ''
+        for num_index, one_str in enumerate(list_of_str):
+            if num_index != 0:
+                output_str +=' ,'
+            output_str += one_str 
+            if num_index == len(list_of_str)-1:
+                output_str +='.'
+        return output_str
+    
+    
+    @classmethod
+    def get_recomendation(cls):
+        """         Providing recomendations about lesson.
+                    pace and emotional conditions of students.
+                    At the output we have two lines with:
+                         - recomendations
+                         - list of absent students
+                    Also color of this lines is noticed.  
+        """
         
-        return total_log
+        time_constant = 10 # Negative emotions duration before recomendation is made
+        crit_angle = 20 # Critical angle of head for student.
+        negative_students = {} # List of students with negative emotions
+        distracted_students = {} # List of distracted students (high head angle)
+        absent_students = [] # List of absent students
+
+        for student_name in cls.group:
+            # Getting number of log lines for time_constant duration 
+            person = Student.group[student_name]
+            time_tail_200 = np.array(person._logging_time[-200:])
+            time_tail = time_tail_200 -  time_tail_200[-1]
+            tail_length = np.sum((time_tail + time_constant)>0)
+            
+            # Here we need to check that we have enough information
+            frames_num_with_student = sum(np.array(person._stud_is_on_frame[-tail_length:]))
+            if frames_num_with_student > 0.8*tail_length :
+                
+                # Get names of students with negative emotions
+                emotions_tail = np.array(person._emotion_logg[-tail_length:])[person._stud_is_on_frame[-tail_length:]]
+                tmp = np.zeros_like(emotions_tail)
+                tmp[np.arange(len(emotions_tail)), emotions_tail.argmax(1)] = 1
+                
+                colomn_sum = tmp.sum(axis = 0)
+                
+                if sum(np.take(colomn_sum, person.indexes_of_pos_emotions)) < sum(np.take(colomn_sum, person.indexes_of_neg_emotions)):
+                    negative_students[student_name] = sum(np.take(colomn_sum, person.indexes_of_neg_emotions))
+                
+                # Get list of students with high head pose angle
+                angle_tail = np.array(person._angle_logg[-tail_length:])
+                angle_tail[angle_tail == None] = 0
+                angle_tail = np.abs(angle_tail)
+                
+                if sum(angle_tail[:,1] > crit_angle)> 0.9*tail_length:
+                    distracted_students[student_name] = sum(angle_tail[:,1] > crit_angle)/tail_length
+            elif frames_num_with_student < 0.05*tail_length:
+                    absent_students.append(student_name)
+        
+        # # This print is used to 
+        # print(distracted_students)
+        # print(negative_students)
+        # print(absent_students)
+        
+        # Creating lines to return
+        absent_st_number = len(absent_students)
+        if absent_st_number == 0:
+            attendance = ('All students in the classroom',(0,255,0))
+        else:
+            absent_st_str = cls.comma_sep_str(absent_students)
+            attendance = ('{} students absent: {}'.format(absent_st_number,absent_st_str), (255,255,0))
+        
+        if len(negative_students)+len(distracted_students) == 0:
+            recomendation = ('Lesson is going well', (0,255,0))
+            return recomendation, attendance
+        else:
+            problem_students = len(set(list(negative_students.keys())+list(distracted_students.keys())))
+            total_number_of_students = len(list(cls.group.keys()))
+            if problem_students > 0.5 * total_number_of_students and total_number_of_students>1:
+                recomendation = ('Class need to have a break',(0,255,0))
+                return recomendation, attendance
+            if len(list(negative_students.keys()))>0:
+                max_negative_student = list(negative_students.keys())[0]
+                recomendation = (' Pay attention to {} (bad mood)'.format(max_negative_student),(0,255,0))
+                return recomendation, attendance
+            if len(list(distracted_students.keys()))>0:
+                max_distracted_student = list(distracted_students.keys())[0]
+                recomendation = (' Pay attention to {} (distracted)'.format(max_distracted_student),(0,255,0))
+                return recomendation, attendance
+            
+        
+
+        
