@@ -113,7 +113,7 @@ class MyTimeChart(FigureCanvas):
 
     def compute_initial_figure(self,input_data):
         df_data = input_data.copy()
-        #df_data  = df_data.rolling(40, win_type='gaussian').mean(std = 6)
+        df_data  = df_data.rolling(40, win_type='gaussian').mean(std = 6)
         df_data.set_index((df_data.index - df_data.index[0])/60, inplace = True)
         df_data.plot(ax = self.axes)
         # for emotion in emo_time:
