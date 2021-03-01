@@ -3,7 +3,7 @@ from torchvision import transforms
 from torch.nn import Softmax
 from models.mini_xception import *
 from PIL import Image
-
+import numpy as np
 
 class EmotionsRecognition:
 
@@ -16,6 +16,7 @@ class EmotionsRecognition:
         self.net.load_state_dict(checkpoint['net'])
         self.net.to(self.device).eval()
         self.softmax = Softmax(dim=1)
+        self.n_pre = 5  # average smoothing by looking on n_pre emotions
         self.transforms = transforms.Compose([
             transforms.Grayscale(num_output_channels=1),
             transforms.Resize(48),
@@ -43,9 +44,16 @@ class EmotionsRecognition:
             output = self.softmax(self.net(inputs)).detach().cpu().numpy()
 
         for name in student.group:
+            person = student.group[name]
             if name in names:
                 student_index = names.index(name)
-                student.group[name].emotions = output[student_index].tolist()
-
+                person.emotions = output[student_index].tolist()
+                if person.current_emotion is None:
+                    person.current_emotion = self.emotions[int(np.argmax(person.emotions))]
+                else:
+                    mask = person._stud_is_on_frame[-self.n_pre:]
+                    person.current_emotion = self.emotions[int(np.argmax(
+                        np.mean(np.array(person._emotion_logg[-self.n_pre:])[mask], axis=0)))]
             else:
-                student.group[name].emotions = [None] * len(self.emotions)
+                person.emotions = [None] * len(self.emotions)
+                person.current_emotion = None

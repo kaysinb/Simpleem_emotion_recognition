@@ -1,191 +1,80 @@
+import yaml
+import os
 import numpy as np
-import cv2
+from collections import deque
+from pose_estimation_utils.TDDFA_ONNX import TDDFA_ONNX
+from pose_estimation_utils.utils.pose import viz_pose
 
 
 class PoseEstimation:
     """Estimate head pose according to the facial landmarks"""
 
-    def __init__(self, img_size=(480, 640)):
+    def __init__(self):
+        cfg = yaml.load(open('./pose_estimation_utils/configs/mb1_120x120.yml'), Loader=yaml.SafeLoader)
+        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+        os.environ['OMP_NUM_THREADS'] = '4'
+        self.tddfa = TDDFA_ONNX(**cfg)
+        self.n_pre = 2  # average smoothing by looking on n_pre poses
 
-        self.size = img_size
-        self.model_points = np.array([[-32.97848, - 38.873894, - 1.4260463],  # pupil_right
-                                      [32.63183, - 38.498325, - 1.1897595],  # pupil_left
-                                      [1.226783, - 8.414541, 36.94806],     # nose
-                                      [-28.916267, 28.612717, 2.24031],     # mouth left
-                                      [28.794413, 28.079924, 3.217393]])    # mouth right
+    def __call__(self, frame, student):
+        self.pose_estimation(frame, student)
+        frame_with_pose = self.calculate_angles(frame, student)
+        return frame_with_pose
 
-        # Camera internals
-        self.focal_length = self.size[1]
-        self.camera_center = (self.size[1] / 2, self.size[0] / 2)
-        self.camera_matrix = np.array(
-            [[self.focal_length, 0, self.camera_center[0]],
-             [0, self.focal_length, self.camera_center[1]],
-             [0, 0, 1]], dtype="double")
+    def pose_estimation(self, frame, student):
+        frame_bgr = frame[..., ::-1]
+        for name in student.group:
+            face = student.group[name].face_coordinates
+            if face is not None:
+                if student.group[name].landmarks is None:
 
-        # Assuming no lens distortion
-        self.dist_coefs = np.zeros((4, 1))
+                    param_lst, roi_box_lst = self.tddfa(frame_bgr, [face])
+                    landmarks = self.tddfa.recon_vers(param_lst, roi_box_lst, dense_flag=False)[0]
+                    student.group[name].landmarks = deque([landmarks]*self.n_pre)
+                    student.group[name].param_lst = deque([param_lst[0]] * self.n_pre)
 
-        # Rotation vector and translation vector
-        self.r_vec = np.array([[0.01891013], [0.08560084], [-3.14392813]])
-        self.t_vec = np.array(
-            [[-14.97821226], [-10.62040383], [-2053.03596872]])
+                param_lst, roi_box_lst = self.tddfa(frame_bgr, [student.group[name].landmarks[-1]], crop_policy='landmark')
+                landmarks = self.tddfa.recon_vers(param_lst, roi_box_lst, dense_flag=False)[0]
 
-    def solve_pose(self, image_points):
-        """
-        Solve pose from image points
-        Return (rotation_vector, translation_vector) as pose.
-        """
+                lm_mean_x = np.mean(landmarks[0])
+                lm_mean_y = np.mean(landmarks[1])
+                left = face[0]
+                right = face[2]
+                top = face[1]
+                bottom = face[3]
 
-        (_, rotation_vector, translation_vector) = cv2.solvePnP(np.array(self.model_points), image_points,
-                                                                self.camera_matrix, self.dist_coefs,
-                                                                flags=cv2.SOLVEPNP_EPNP)
+                # if face is lost
+                if lm_mean_x < left or lm_mean_x > right or lm_mean_y < top or lm_mean_y > bottom:
+                    param_lst, roi_box_lst = self.tddfa(frame_bgr, [face])
+                    landmarks = self.tddfa.recon_vers(param_lst, roi_box_lst, dense_flag=False)[0]
+                    param_lst, roi_box_lst = self.tddfa(frame_bgr, [landmarks],
+                                                        crop_policy='landmark')
+                    landmarks = self.tddfa.recon_vers(param_lst, roi_box_lst, dense_flag=False)[0]
 
-        return rotation_vector, translation_vector
+                    student.group[name].landmarks = deque([landmarks] * self.n_pre)
+                    student.group[name].param_lst = deque([param_lst[0]] * self.n_pre)
 
-    def draw_annotation_box(self, image, rotation_vector, translation_vector, color=(255, 255, 255), line_width=2):
-        """Draw a 3D box as annotation of pose"""
-        point_3d = []
-        rear_size = 75
-        rear_depth = 0
-        point_3d.append((-rear_size, -rear_size, rear_depth))
-        point_3d.append((-rear_size, rear_size, rear_depth))
-        point_3d.append((rear_size, rear_size, rear_depth))
-        point_3d.append((rear_size, -rear_size, rear_depth))
-        point_3d.append((-rear_size, -rear_size, rear_depth))
+                student.group[name].landmarks.popleft()
+                student.group[name].param_lst.popleft()
 
-        front_size = 100
-        front_depth = 100
-        point_3d.append((-front_size, -front_size, front_depth))
-        point_3d.append((-front_size, front_size, front_depth))
-        point_3d.append((front_size, front_size, front_depth))
-        point_3d.append((front_size, -front_size, front_depth))
-        point_3d.append((-front_size, -front_size, front_depth))
-        point_3d = np.array(point_3d, dtype=np.float).reshape(-1, 3)
+                student.group[name].landmarks.append(landmarks.copy())
+                student.group[name].param_lst.append(param_lst[0].copy())
 
-        # Map to 2d image points
-        (point_2d, _) = cv2.projectPoints(point_3d,
-                                          rotation_vector,
-                                          translation_vector,
-                                          self.camera_matrix,
-                                          self.dist_coefs)
-        point_2d = np.int32(point_2d.reshape(-1, 2))
+            else:
+                student.group[name].landmarks = None
+                student.group[name].param_lst = None
 
-        # Draw all the lines
-        cv2.polylines(image, [point_2d], True, color, line_width, cv2.LINE_AA)
-        cv2.line(image, tuple(point_2d[1]), tuple(
-            point_2d[6]), color, line_width, cv2.LINE_AA)
-        cv2.line(image, tuple(point_2d[2]), tuple(
-            point_2d[7]), color, line_width, cv2.LINE_AA)
-        cv2.line(image, tuple(point_2d[3]), tuple(
-            point_2d[8]), color, line_width, cv2.LINE_AA)
-        cv2.circle(image, (point_2d[6][0], point_2d[6][1]), 3, (0, 0, 255), -1)
-        cv2.circle(image, (point_2d[6][0], point_2d[6][1]), 3, (0, 0, 255), -1)
+    @ staticmethod
+    def calculate_angles(frame, student):
+        frame_with_pose = frame.copy()
+        for name in student.group:
+            person = student.group[name]
+            if person.param_lst is not None:
+                ver_ave = np.mean(person.landmarks, axis=0)
+                param_ave = np.mean(person.param_lst, axis=0)
+                frame_with_pose, angles = viz_pose(frame_with_pose, param_ave, ver_ave, person.student_mark)
+                person.angles = angles
 
-    @classmethod
-    def rot_params_rv(cls, rvecs):
-
-        from math import pi, atan2, asin
-        R = cv2.Rodrigues(rvecs)[0]
-        roll = 180 * atan2(-R[2][1], R[2][2]) / pi
-        pitch = 180 * asin(R[2][0]) / pi
-        yaw = 180 * atan2(-R[1][0], R[0][0]) / pi
-
-        if abs(roll) > 90: roll = abs(180 - abs(roll)) * roll / abs(roll)
-        if abs(pitch) > 90: pitch = abs(180 - abs(pitch)) * pitch / abs(pitch)
-        if abs(yaw) > 90: yaw = abs(180 - abs(yaw)) * yaw / abs(yaw)
-
-        rot_params = [roll, pitch, yaw]
-        return rot_params
+        return frame_with_pose
 
 
-class Stabilizer:
-    """Using Kalman filter as a point stabilizer."""
-
-    def __init__(self,
-                 state_num=4,
-                 measure_num=2,
-                 cov_process=0.1,
-                 cov_measure=1):
-        """Initialization"""
-        # Currently we only support scalar and point, so check user input first.
-        assert state_num == 4 or state_num == 2, "Only scalar and point supported, Check state_num please."
-
-        # Store the parameters.
-        self.state_num = state_num
-        self.measure_num = measure_num
-
-        # The filter itself.
-        self.filter = cv2.KalmanFilter(state_num, measure_num, 0)
-
-        # Store the state.
-        self.state = np.zeros((state_num, 1), dtype=np.float32)
-
-        # Store the measurement result.
-        self.measurement = np.array((measure_num, 1), np.float32)
-
-        # Store the prediction.
-        self.prediction = np.zeros((state_num, 1), np.float32)
-
-        # Kalman parameters setup for scalar.
-        if self.measure_num == 1:
-            self.filter.transitionMatrix = np.array([[1, 1],
-                                                     [0, 1]], np.float32)
-
-            self.filter.measurementMatrix = np.array([[1, 1]], np.float32)
-
-            self.filter.processNoiseCov = np.array([[1, 0],
-                                                    [0, 1]], np.float32) * cov_process
-
-            self.filter.measurementNoiseCov = np.array(
-                [[1]], np.float32) * cov_measure
-
-        # Kalman parameters setup for point.
-        if self.measure_num == 2:
-            self.filter.transitionMatrix = np.array([[1, 0, 1, 0],
-                                                     [0, 1, 0, 1],
-                                                     [0, 0, 1, 0],
-                                                     [0, 0, 0, 1]], np.float32)
-
-            self.filter.measurementMatrix = np.array([[1, 0, 0, 0],
-                                                      [0, 1, 0, 0]], np.float32)
-
-            self.filter.processNoiseCov = np.array([[1, 0, 0, 0],
-                                                    [0, 1, 0, 0],
-                                                    [0, 0, 1, 0],
-                                                    [0, 0, 0, 1]], np.float32) * cov_process
-
-            self.filter.measurementNoiseCov = np.array([[1, 0],
-                                                        [0, 1]], np.float32) * cov_measure
-
-    def update(self, measurement):
-        """Update the filter"""
-        # Make kalman prediction
-        self.prediction = self.filter.predict()
-
-        # Get new measurement
-        if self.measure_num == 1:
-            self.measurement = np.array([[np.float32(measurement[0])]])
-        else:
-            self.measurement = np.array([[np.float32(measurement[0])],
-                                         [np.float32(measurement[1])]])
-
-        # Correct according to measurement
-        self.filter.correct(self.measurement)
-
-        # Update state value.
-        self.state = self.filter.statePost
-
-    def set_q_r(self, cov_process=0.1, cov_measure=0.001):
-        """Set new value for processNoiseCov and measurementNoiseCov."""
-        if self.measure_num == 1:
-            self.filter.processNoiseCov = np.array([[1, 0],
-                                                    [0, 1]], np.float32) * cov_process
-            self.filter.measurementNoiseCov = np.array(
-                [[1]], np.float32) * cov_measure
-        else:
-            self.filter.processNoiseCov = np.array([[1, 0, 0, 0],
-                                                    [0, 1, 0, 0],
-                                                    [0, 0, 1, 0],
-                                                    [0, 0, 0, 1]], np.float32) * cov_process
-            self.filter.measurementNoiseCov = np.array([[1, 0],
-                                                        [0, 1]], np.float32) * cov_measure

@@ -160,7 +160,7 @@ class FacesRecognition:
             recognized_students = self.compare_faces(embeddings,
                                                      student.embeddings,
                                                      student.names,
-                                                     tolerance=1.0)
+                                                     tolerance=0.99)
 
         for name in student.group:
             if name in recognized_students:
@@ -168,7 +168,7 @@ class FacesRecognition:
                 student.group[name].face_coordinates = faces_coordinates[student_index]
                 student.group[name].face_image = np.array(self.from_m1p1(batch_cropped_faces[student_index]),
                                                           dtype='uint8').transpose((1, 2, 0))
-                student.group[name].landmarks = landmarks[student_index]
+
             else:
                 student.group[name].face_coordinates = None
                 student.group[name].face_image = None

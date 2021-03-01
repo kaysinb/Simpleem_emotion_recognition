@@ -5,8 +5,9 @@ from src.faces_recognition import FacesRecognition
 from src.emotion_recognition import EmotionsRecognition
 from src.students import Student
 from src.pose_estimation import PoseEstimation
-from src.display_text import DisplayText
+from src.display_text import DisplayText, write_signature
 from src.emotionsStatisticsGUI import show_statistic_window
+from tqdm import tqdm
 
 
 def main(photos_path, video_path=0, show_video=False, save_video=False):
@@ -17,12 +18,19 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
     emotions_list = emotions_recognizer.emotions
 
     for one_student in students_dirs:
-        Student(one_student.path, one_student.name, faces_recognizer, emotions_list)
+        student_photos = []
+        for file_name in os.listdir(one_student.path):
+            print('Getting photo .... : ' + one_student.path + '/' + file_name)
+            image = cv2.imread(one_student.path + '/' + file_name)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            student_photos.append(image)
+        Student(student_photos, one_student.name, faces_recognizer, emotions_list)
 
     # Create a VideoCapture object and read from input file
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_step = fps//10
+    out_fps = 5
+    frame_step = fps//out_fps
 
     if video_path == 0:
         cap.set(3, 1280)
@@ -33,16 +41,16 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
         print("Error opening video stream or file")
 
     frame = cap.read()[1]
-    pose_estimator = PoseEstimation(img_size=frame.shape[0:2])
+    pose_estimator = PoseEstimation()
     text_displayer = DisplayText(frame.shape)
 
     if save_video:
         # Create a VideoCapture object and read from input file
         fourcc = cv2.VideoWriter_fourcc('F', 'M', 'P', '4')
-        out_video = cv2.VideoWriter('./output_video.mp4', fourcc, fps//frame_step, (text_displayer.full_frame_shape[1],
+        out_video = cv2.VideoWriter('./testing/output_video.mp4', fourcc, fps//frame_step, (text_displayer.full_frame_shape[1],
                                                                                     text_displayer.full_frame_shape[0]))
 
-    firs_frame = 0  # first frame
+    firs_frame = 5000  # first frame
     last_frame = None
 
     if last_frame is None:
@@ -56,74 +64,36 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
     stride = 1  # we will recognize only every 'stride' frame for saving time
     i = 0  # counter
     text = 'hi'
-    while cap.isOpened() and firs_frame + i < last_frame:
+
+    for _ in tqdm(range(1000)):
+    # while cap.isOpened() and firs_frame + i < last_frame:
         flag = False
         if i % stride == 0:
             flag = True
 
         # Capture frame-by-frame
         ret, frame = cap.read()
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         if ret and i % frame_step == 0:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if flag:
-
                 faces_recognizer(frame, Student)
                 emotions_recognizer(Student)
-
-                for student_name in Student.group:
-                    one_student = Student.group[student_name]
-
-                    if one_student.landmarks is not None:
-                        m = one_student.landmarks
-                        one_student.pose = pose_estimator.solve_pose(m)
+                frame = pose_estimator(frame, Student)
                     
-                    Student.logging_of_group()
+                Student.logging_of_group()
 
-                    
-
-            for student_name in Student.group:
-                if Student.group[student_name].face_coordinates is not None:
-                    one_student = Student.group[student_name]
-
-                    pose = one_student.pose
-
-                    pose_estimator.draw_annotation_box(frame, pose[0], pose[1], color=(255, 128, 128))
-
-                    y = int(one_student.landmarks[0][1])
-                    x = int(2 * one_student.landmarks[1][0] - one_student.landmarks[0][0])
-
-                    rot_vect = pose_estimator.rot_params_rv(np.atleast_2d(pose[0]).T)
-
-                    cv2.putText(frame, str(rot_vect[0])[:4], (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1,
-                                255)
-                    cv2.putText(frame, str(rot_vect[1])[:4], (x, y + 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0),
-                                1,
-                                255)
-                    cv2.putText(frame, str(rot_vect[2])[:4], (x, y + 100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0),
-                                1,
-                                255)
-
-                    y_text = int(
-                        one_student.landmarks[0][1] - (one_student.landmarks[3][1] - one_student.landmarks[0][1]))
-                    x_text = int(
-                        one_student.landmarks[0][0] - (one_student.landmarks[1][0] - one_student.landmarks[0][0]))
-
-                    emotion = emotions_list[np.argmax(one_student.emotions)]
-                    text = student_name + ' is ' + emotion
-                    cv2.putText(frame, text, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX , 0.8, (0,0,255), 1, 255)
-
-                    for point in one_student.landmarks:
-                        cv2.circle(frame, (int(point[0]), int(point[1])), 3, (0, 0, 255), -1)
+            write_signature(frame, Student)
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            full_frame = text_displayer.show_text(frame, text)
+            recommendation, attendance = Student.get_recommendation()
+            full_frame = text_displayer.show_text(frame, recommendation, attendance)
 
             if save_video:
                 out_video.write(full_frame)
 
             if show_video:
-                cv2.imshow('meeting', full_frame)
+                cv2.imshow('meeting', cv2.resize(full_frame, (full_frame.shape[1]//2, full_frame.shape[0]//2)))
 
             # Press Q on keyboard to  exit
             if cv2.waitKey(2) & 0xFF == ord('q'):
@@ -137,7 +107,8 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
 
 
 if __name__ == '__main__':
-    # main(video_path=0, photos_path='../../er_test/photos', show_video=True, save_video=True)
-    main(video_path='../../er_test/test_video.mp4', photos_path='../../er_test/photos', show_video=True, save_video=True)
+    main(video_path=0, photos_path='../../er_test/photos', show_video=True, save_video=True)
+    # main(video_path='../../er_test/test_video.mp4', photos_path='../../er_test/photos', show_video=True, save_video=True)
+    # main(video_path='../../er_test/test_v.mp4', photos_path='../../er_test/photos_new', show_video=True, save_video=True)
 
 

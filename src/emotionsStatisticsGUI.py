@@ -268,17 +268,10 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         
         
         text = QtWidgets.QLabel(self.main_widget)
-        text.setText('Choose name of the pupul:')
+        text.setText('Choose name of the student:')
         text.setFont( QtGui.QFont('Arial', 15))
 
-
-
-
-
-        self.combo.activated[str].connect(self.onChanged)   
-        
-                
-        
+        self.combo.activated[str].connect(self.onChanged)
         self.l.addWidget(text,0,0)
         self.l.addWidget(self.combo,0,1)
         self.l.addWidget(self.pie,1,0)
