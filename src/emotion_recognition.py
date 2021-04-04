@@ -24,15 +24,15 @@ class EmotionsRecognition:
             transforms.ToTensor()
         ])
 
-    def __call__(self, student):
-        self.emotion_recognition(student)
+    def __call__(self, student, class_name):
+        self.emotion_recognition(student, class_name)
 
-    def emotion_recognition(self, student):
+    def emotion_recognition(self, student, class_name):
 
         faces = []
         names = []
-        for name in student.group:
-            face = student.group[name].face_image
+        for name in student.group[class_name]:
+            face = student.group[class_name][name].face_image
             if face is not None:
                 face = Image.fromarray(face)
                 face_input = self.transforms(face)
@@ -43,8 +43,8 @@ class EmotionsRecognition:
             inputs = torch.stack(faces).to(self.device)
             output = self.softmax(self.net(inputs)).detach().cpu().numpy()
 
-        for name in student.group:
-            person = student.group[name]
+        for name in student.group[class_name]:
+            person = student.group[class_name][name]
             if name in names:
                 student_index = names.index(name)
                 person.emotions = output[student_index].tolist()

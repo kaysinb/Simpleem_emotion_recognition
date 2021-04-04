@@ -41,17 +41,17 @@ class DisplayText:
         return full_frame
 
 
-def write_signature(frame, student):
-    for student_name in student.group:
-        student_face = student.group[student_name].face_coordinates
+def write_caption(frame, student, class_name):
+    for student_name in student.group[class_name]:
+        student_face = student.group[class_name][student_name].face_coordinates
         if student_face is not None:
-            emotion = student.group[student_name].current_emotion
+            emotion = student.group[class_name][student_name].current_emotion
             text = student_name + ' is ' + emotion
             text_scale = (student_face[2] - student_face[0]) / 125
             text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, text_scale, 1)[0][0]
             x_text = int(((student_face[0] + student_face[2]) / 2) - text_size / 2)
             y_text = int(student_face[1])
             cv2.putText(frame, text, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX, text_scale,
-                        student.group[student_name].student_mark, 1, 255, )
+                        student.group[class_name][student_name].student_mark, 1, 255, )
 
     return frame

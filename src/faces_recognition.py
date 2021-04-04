@@ -23,8 +23,8 @@ class FacesRecognition:
         self.to_m1p1 = lambda x: (x - 127.5) / 128
         self.from_m1p1 = lambda x: x * 128 + 127.5
 
-    def __call__(self, frame, students):
-        self.faces_recognition(frame, students)
+    def __call__(self, frame, students, class_name):
+        self.faces_recognition(frame, students, class_name)
 
     def get_initial_embedding(self, photo):
         face_coordinates, landmarks = self.faces_detection(photo)
@@ -147,7 +147,7 @@ class FacesRecognition:
                 break
         return recognized_embeddings
 
-    def faces_recognition(self, frame, student):
+    def faces_recognition(self, frame, student, class_name):
         faces_coordinates, landmarks = self.faces_detection(frame)
 
         if faces_coordinates is None:
@@ -158,18 +158,18 @@ class FacesRecognition:
             embeddings = self.get_embeddings(batch_cropped_faces)
 
             recognized_students = self.compare_faces(embeddings,
-                                                     student.embeddings,
-                                                     student.names,
+                                                     student.embeddings[class_name],
+                                                     student.names[class_name],
                                                      tolerance=0.99)
 
-        for name in student.group:
+        for name in student.group[class_name]:
             if name in recognized_students:
                 student_index = recognized_students.index(name)
-                student.group[name].face_coordinates = faces_coordinates[student_index]
-                student.group[name].face_image = np.array(self.from_m1p1(batch_cropped_faces[student_index]),
+                student.group[class_name][name].face_coordinates = faces_coordinates[student_index]
+                student.group[class_name][name].face_image = np.array(self.from_m1p1(batch_cropped_faces[student_index]),
                                                           dtype='uint8').transpose((1, 2, 0))
 
             else:
-                student.group[name].face_coordinates = None
-                student.group[name].face_image = None
-                student.group[name].landmarks = None
+                student.group[class_name][name].face_coordinates = None
+                student.group[class_name][name].face_image = None
+                student.group[class_name][name].landmarks = None

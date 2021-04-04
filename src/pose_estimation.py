@@ -16,24 +16,25 @@ class PoseEstimation:
         self.tddfa = TDDFA_ONNX(**cfg)
         self.n_pre = 2  # average smoothing by looking on n_pre poses
 
-    def __call__(self, frame, student):
-        self.pose_estimation(frame, student)
-        frame_with_pose = self.calculate_angles(frame, student)
+    def __call__(self, frame, student, class_name):
+        self.pose_estimation(frame, student, class_name)
+        frame_with_pose = self.calculate_angles(frame, student, class_name)
         return frame_with_pose
 
-    def pose_estimation(self, frame, student):
+    def pose_estimation(self, frame, student, class_name):
         frame_bgr = frame[..., ::-1]
-        for name in student.group:
-            face = student.group[name].face_coordinates
+        for name in student.group[class_name]:
+            face = student.group[class_name][name].face_coordinates
             if face is not None:
-                if student.group[name].landmarks is None:
+                if student.group[class_name][name].landmarks is None:
 
                     param_lst, roi_box_lst = self.tddfa(frame_bgr, [face])
                     landmarks = self.tddfa.recon_vers(param_lst, roi_box_lst, dense_flag=False)[0]
-                    student.group[name].landmarks = deque([landmarks]*self.n_pre)
-                    student.group[name].param_lst = deque([param_lst[0]] * self.n_pre)
+                    student.group[class_name][name].landmarks = deque([landmarks]*self.n_pre)
+                    student.group[class_name][name].param_lst = deque([param_lst[0]] * self.n_pre)
 
-                param_lst, roi_box_lst = self.tddfa(frame_bgr, [student.group[name].landmarks[-1]], crop_policy='landmark')
+                param_lst, roi_box_lst = self.tddfa(frame_bgr, [student.group[class_name][name].landmarks[-1]],
+                                                    crop_policy='landmark')
                 landmarks = self.tddfa.recon_vers(param_lst, roi_box_lst, dense_flag=False)[0]
 
                 lm_mean_x = np.mean(landmarks[0])
@@ -51,29 +52,31 @@ class PoseEstimation:
                                                         crop_policy='landmark')
                     landmarks = self.tddfa.recon_vers(param_lst, roi_box_lst, dense_flag=False)[0]
 
-                    student.group[name].landmarks = deque([landmarks] * self.n_pre)
-                    student.group[name].param_lst = deque([param_lst[0]] * self.n_pre)
+                    student.group[class_name][name].landmarks = deque([landmarks] * self.n_pre)
+                    student.group[class_name][name].param_lst = deque([param_lst[0]] * self.n_pre)
 
-                student.group[name].landmarks.popleft()
-                student.group[name].param_lst.popleft()
+                student.group[class_name][name].landmarks.popleft()
+                student.group[class_name][name].param_lst.popleft()
 
-                student.group[name].landmarks.append(landmarks.copy())
-                student.group[name].param_lst.append(param_lst[0].copy())
+                student.group[class_name][name].landmarks.append(landmarks.copy())
+                student.group[class_name][name].param_lst.append(param_lst[0].copy())
 
             else:
-                student.group[name].landmarks = None
-                student.group[name].param_lst = None
+                student.group[class_name][name].landmarks = None
+                student.group[class_name][name].param_lst = None
 
     @ staticmethod
-    def calculate_angles(frame, student):
+    def calculate_angles(frame, student, class_name):
         frame_with_pose = frame.copy()
-        for name in student.group:
-            person = student.group[name]
+        for name in student.group[class_name]:
+            person = student.group[class_name][name]
             if person.param_lst is not None:
                 ver_ave = np.mean(person.landmarks, axis=0)
                 param_ave = np.mean(person.param_lst, axis=0)
                 frame_with_pose, angles = viz_pose(frame_with_pose, param_ave, ver_ave, person.student_mark)
                 person.angles = angles
+            else:
+                person.angles = {'yaw': None, 'pitch': None, 'roll': None}
 
         return frame_with_pose
 
