@@ -10,6 +10,7 @@ from src.pose_estimation import PoseEstimation
 from src.display_text import DisplayText, write_caption
 from src.emotionsStatisticsGUI import show_statistic_window
 from tqdm import tqdm
+from mss import mss
 
 
 def main(photos_path, video_path=0, show_video=False, save_video=False):
@@ -20,7 +21,7 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
     Student.list_of_emotions = emotions_recognizer.emotions
     Student.detector = faces_recognizer
     Student.group_initialization(class_name)
-    Student.recognize_all_students[class_name] = True
+    Student.recognize_all_students[class_name] = False
 
 
     for one_student in students_dirs:
@@ -33,20 +34,13 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
         Student(student_photos, one_student.name, class_name)
 
     # Create a VideoCapture object and read from input file
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    bounding_box = {'top': 1, 'left': 50, 'width': 1900, 'height': 1000}
+    sct = mss()
+    sct_frame = sct.grab(bounding_box)
+    frame = np.array(sct_frame)[:,:,:3].copy()
+    fps = 25
     out_fps = 15
     frame_step = fps//out_fps
-
-    if video_path == 0:
-        cap.set(3, 1280)
-        cap.set(4, 720)
-
-    # Check if video opened successfully
-    if not cap.isOpened():
-        print("Error opening video stream or file")
-
-    frame = cap.read()[1]
     pose_estimator = PoseEstimation()
     text_displayer = DisplayText(frame.shape)
 
@@ -56,31 +50,21 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
         out_video = cv2.VideoWriter('./testing/output_video_5.mp4', fourcc, fps//frame_step, (text_displayer.full_frame_shape[1],
                                                                                     text_displayer.full_frame_shape[0]))
 
-    firs_frame = 0 # first frame
-    last_frame = None
-
-    if last_frame is None:
-        if video_path != 0:
-            last_frame = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            print(last_frame)
-        else:
-            last_frame = np.inf
-
-    cap.set(1, firs_frame)  # read from firs_frame
 
     stride = 1  # we will recognize only every 'stride' frame for saving time
     i = 0  # counter
     text = 'hi'
 
     for _ in tqdm(range(10000)):
-    # while cap.isOpened() and firs_frame + i < last_frame:
+
         flag = False
         if i % stride == 0:
             flag = True
 
         # Capture frame-by-frame
-        ret, frame = cap.read()
-        if ret and i % frame_step == 0:
+        sct_frame = sct.grab(bounding_box)
+        frame = np.array(sct_frame)[:, :, :3].copy()
+        if  i % frame_step == 0:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if flag:
                 faces_recognizer(frame, Student, class_name)
@@ -108,7 +92,6 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
                 break
         i += 1
 
-    cap.release()
     cv2.destroyAllWindows()
     
     show_statistic_window(Student.get_group_log(class_name))

@@ -1,9 +1,6 @@
-import cv2
-import os
 import numpy as np
 import time
 import pandas as pd
-from collections import deque
 
 
 class Student:
@@ -14,15 +11,18 @@ class Student:
     _logging_time = {}  # Dict of arrays with logging time
     start_lesson = {}  # Dict of flags
     time_length_const = {}  # Dict of time length consts
+    detector = None
+    list_of_emotions = None
+    recognize_all_students = {}
 
-    def __init__(self, photos, name, class_name, detector, list_of_emotions):
+    def __init__(self, photos, name, class_name):
 
         # Unique properties of the student
         self.name = name
         self.class_name = class_name
         self.face_image = None
-        self._number_of_embeddings = 0  # Number of embeddings used for student. Is used to drop Inf values during unpacking
-        student_embeddings = None  # All embeddings of student in np.array
+        self.number_of_embeddings = 0  # Number of embeddings used for student. Is used to drop Inf values during unpacking
+        self.student_embeddings = None  # All embeddings of student in np.array
         self.student_mark = (0, 255, 0)
 
         # Instant properties
@@ -39,77 +39,87 @@ class Student:
         self._stud_is_on_frame = []
 
         # Service properties
-        self.list_of_emotions = list_of_emotions
         self.list_of_pos_emotions = ['neutral', 'happy']
         self.indexes_of_pos_emotions = []
 
         # Init of indexes of positive and negative emotions
         for item in self.list_of_pos_emotions:
             try:
-                self.indexes_of_pos_emotions.append(self.list_of_emotions.index(item))
+                self.indexes_of_pos_emotions.append(Student.list_of_emotions.index(item))
             except ValueError:
                 print('Positive emotion {} is not in list of emotions'.format(item))
 
-        self.indexes_of_neg_emotions = [index for index in range(len(self.list_of_emotions)) if
+        self.indexes_of_neg_emotions = [index for index in range(len(Student.list_of_emotions)) if
                                         index not in self.indexes_of_pos_emotions]
         self.frame_color = (0, 0, 255)
+        self.add_new_embeddings(photos)
 
+    @classmethod
+    def group_initialization(cls, class_name):
+        cls.names[class_name] = []
+        cls.start_lesson[class_name] = True
+        cls.group[class_name] = {}
+        cls._logging_time[class_name] = []
+
+
+    def add_new_embeddings(self, photos):
         # Generate embeddings for each student
 
         for image in photos:
-            new_embedding = detector.get_initial_embedding(image)
+            new_embedding = Student.detector.get_initial_embedding(image)
 
             if new_embedding is not None:
-                self._number_of_embeddings += 1
-                if student_embeddings is not None:
-                    student_embeddings = np.dstack((student_embeddings, new_embedding))
+                self.number_of_embeddings += 1
+                if self.student_embeddings is not None:
+                    self.student_embeddings = np.dstack((self.student_embeddings, new_embedding))
                 else:
-                    student_embeddings = new_embedding
-                    student_embeddings = np.expand_dims(student_embeddings, axis=0)
-                    student_embeddings = np.expand_dims(student_embeddings, axis=2)
+                    self.student_embeddings = new_embedding
+                    self.student_embeddings = np.expand_dims(self.student_embeddings, axis=0)
+                    self.student_embeddings = np.expand_dims(self.student_embeddings, axis=2)
             else:
                 print('Bad photo for initialization!')
 
+        if self.student_embeddings is not None:
 
-
-        if self.class_name in Student.names:
-            Student.names[self.class_name].append(self.name)
-            Student.group[self.class_name][self.name] = self
-        else:
-            Student.names[self.class_name] = [self.name]
-            Student.start_lesson[self.class_name] = True
-            Student.group[self.class_name] = {}
-            Student.group[self.class_name][self.name] = self
-            Student._logging_time[self.class_name] = []
-
+            if self.name not in Student.names[self.class_name]:
+                Student.names[self.class_name].append(self.name)
+                Student.group[self.class_name][self.name] = self
 
         # Adding embedding matrix of student to common matrix
 
-        infinite_value = np.inf
+            infinite_value = np.inf
 
-        if self.class_name in Student.embeddings:
-            stu_emb_depth = Student.embeddings[self.class_name].shape[2]  # Depth of all students embedding
-            slf_emb_depth = student_embeddings.shape[2]  # Depth of student embedding
+            if self.class_name in Student.embeddings:
 
-            # Concatenation of arrays with notequal shape
-            if stu_emb_depth == slf_emb_depth:
-                Student.embeddings[self.class_name] = np.vstack((Student.embeddings[self.class_name], student_embeddings))
-            elif stu_emb_depth > slf_emb_depth:
-                block_to_add_shape = (1, Student.embeddings[self.class_name].shape[1], stu_emb_depth - slf_emb_depth)
-                block_to_add = np.full(block_to_add_shape, infinite_value)
-                Student.embeddings[self.class_name] = np.vstack((Student.embeddings[self.class_name],
-                                                                 np.dstack((student_embeddings, block_to_add))))
+                if len(Student.names[self.class_name]) == Student.embeddings[self.class_name].shape[0]:
+                    index = np.where(np.array(Student.names[self.class_name]) == self.name)[0][0]
+                    Student.embeddings[self.class_name] = np.delete(Student.embeddings[self.class_name], index, axis=0)
+                    Student.names[self.class_name] = np.delete(Student.names[self.class_name], index, axis=0).tolist()
+                    Student.names[self.class_name].append(self.name)
 
-            elif stu_emb_depth < slf_emb_depth:
-                block_to_add_shape = (
-                    Student.embeddings[self.class_name].shape[0], Student.embeddings[self.class_name].shape[1],
-                    slf_emb_depth - stu_emb_depth)
-                block_to_add = np.full(block_to_add_shape, infinite_value)
-                Student.embeddings[self.class_name] = np.vstack((np.dstack((Student.embeddings[self.class_name],
-                                                                            block_to_add)), student_embeddings))
+                stu_emb_depth = Student.embeddings[self.class_name].shape[2]  # Depth of all students embedding
+                slf_emb_depth = self.student_embeddings.shape[2]  # Depth of student embedding
 
-        else:
-            Student.embeddings[self.class_name] = student_embeddings
+                # Concatenation of arrays with notequal shape
+                if stu_emb_depth == slf_emb_depth:
+                    Student.embeddings[self.class_name] = np.vstack(
+                        (Student.embeddings[self.class_name], self.student_embeddings))
+                elif stu_emb_depth > slf_emb_depth:
+                    block_to_add_shape = (1, Student.embeddings[self.class_name].shape[1], stu_emb_depth - slf_emb_depth)
+                    block_to_add = np.full(block_to_add_shape, infinite_value)
+                    Student.embeddings[self.class_name] = np.vstack((Student.embeddings[self.class_name],
+                                                                     np.dstack((self.student_embeddings, block_to_add))))
+
+                elif stu_emb_depth < slf_emb_depth:
+                    block_to_add_shape = (
+                        Student.embeddings[self.class_name].shape[0], Student.embeddings[self.class_name].shape[1],
+                        slf_emb_depth - stu_emb_depth)
+                    block_to_add = np.full(block_to_add_shape, infinite_value)
+                    Student.embeddings[self.class_name] = np.vstack((np.dstack((Student.embeddings[self.class_name],
+                                                                                block_to_add)), self.student_embeddings))
+
+            else:
+                Student.embeddings[self.class_name] = self.student_embeddings
 
     # Methods for logging
     def logging(self):
@@ -178,10 +188,10 @@ class Student:
                     At the output we have two lines with:
                          - recommendations
                          - list of absent students
-                    Also color of this lines is noticed.  
+                    Also color of this lines is noticed.
         """
 
-        time_constant = 30  # Negative emotions duration before recommendation is made
+        time_constant = 20  # Negative emotions duration before recommendation is made
         crit_angle = 20  # Critical angle of head for student.
         lesson_start_time = 5
         negative_students = {}  # Dict of students with negative emotions
@@ -204,7 +214,7 @@ class Student:
         for student_name in cls.group[class_name]:
             if student_name == 'lecturer':
                 continue
-            # Getting number of log lines for time_constant duration 
+            # Getting number of log lines for time_constant duration
             person = Student.group[class_name][student_name]
             person.student_mark = (0, 255, 0)
 

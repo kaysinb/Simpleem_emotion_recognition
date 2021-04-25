@@ -4,7 +4,6 @@ import cv2
 from models.mtcnn import MTCNN
 from models.inception_resnet_v1 import InceptionResnetV1
 from PIL import Image
-import time
 
 
 class FacesRecognition:
@@ -22,6 +21,7 @@ class FacesRecognition:
         self.max_face_tilt = max_face_tilt
         self.to_m1p1 = lambda x: (x - 127.5) / 128
         self.from_m1p1 = lambda x: x * 128 + 127.5
+        self.name_for_new_person = 'Person_1'
 
     def __call__(self, frame, students, class_name):
         self.faces_recognition(frame, students, class_name)
@@ -111,12 +111,17 @@ class FacesRecognition:
                                                            int(frame.shape[0] * self.resize)))
 
         faces_coordinates, probs, landmarks = self.mtcnn.detect(processed_frame, landmarks=True)
+
         if faces_coordinates is not None:
+            faces_coordinates = faces_coordinates[probs > 0.95]
             if self.resize != 1:
                 faces_coordinates /= self.resize
                 landmarks /= self.resize
 
             faces_coordinates = faces_coordinates.astype(int)
+
+            if len(faces_coordinates) == 0:
+                faces_coordinates = None
         return faces_coordinates, landmarks
 
     def get_embeddings(self, batch_cropped_faces):
@@ -124,10 +129,9 @@ class FacesRecognition:
         embeddings = self.resnet(batch).detach().cpu()
         return embeddings.numpy()
 
-    @staticmethod
-    def compare_faces(face_embeddings_to_check, students_embeddings, students_names, tolerance=0.9):
+    def compare_faces(self, face_embeddings_to_check, students_embeddings, students_names, tolerance=0.9):
 
-        recognized_embeddings = ['unknown']*len(face_embeddings_to_check)
+        recognized_embeddings = ['unknown'] * len(face_embeddings_to_check)
         norm_matrix = np.zeros((len(face_embeddings_to_check), students_embeddings.shape[0],
                                 students_embeddings.shape[2])) + tolerance * 2
 
@@ -143,9 +147,24 @@ class FacesRecognition:
                 recognized_embeddings[student_index[0]] = students_names[student_index[1]]
                 norm_matrix[student_index[0]] = tolerance * 2
                 norm_matrix[:, student_index[1]] = tolerance * 2
-            else:
-                break
+
         return recognized_embeddings
+
+    @staticmethod
+    def compare_coordinates(possible_name, center, student, class_name, frame):
+        center_x, center_y = center
+        old_fc = student.group[class_name][possible_name].face_coordinates
+        left = old_fc[0]
+        right = old_fc[2]
+        top = old_fc[1]
+        bottom = old_fc[3]
+        delta_x = int((right - left)*0.5)
+        delta_y = int((bottom - top)*0.5)
+
+        if right + delta_x > center_x > left - delta_x and bottom + delta_y > center_y > top - delta_y:
+            return True
+        else:
+            return False
 
     def faces_recognition(self, frame, student, class_name):
         faces_coordinates, landmarks = self.faces_detection(frame)
@@ -157,19 +176,69 @@ class FacesRecognition:
                                                                faces_coordinates, landmarks)
             embeddings = self.get_embeddings(batch_cropped_faces)
 
-            recognized_students = self.compare_faces(embeddings,
-                                                     student.embeddings[class_name],
-                                                     student.names[class_name],
-                                                     tolerance=0.99)
+            if class_name in student.embeddings:
+                recognized_students = self.compare_faces(embeddings,
+                                                         student.embeddings[class_name],
+                                                         student.names[class_name],
+                                                         tolerance=0.99)
+            else:
+                recognized_students = ['unknown'] * len(embeddings)
 
         for name in student.group[class_name]:
             if name in recognized_students:
                 student_index = recognized_students.index(name)
                 student.group[class_name][name].face_coordinates = faces_coordinates[student_index]
-                student.group[class_name][name].face_image = np.array(self.from_m1p1(batch_cropped_faces[student_index]),
-                                                          dtype='uint8').transpose((1, 2, 0))
+                student.group[class_name][name].face_image = np.array(
+                    self.from_m1p1(batch_cropped_faces[student_index]),
+                    dtype='uint8').transpose((1, 2, 0))
 
-            else:
+        if student.recognize_all_students[class_name]:
+            for i, person in enumerate(recognized_students):
+                if person == 'unknown':
+                    found_this_person = False
+                    new_fc = faces_coordinates[i]
+                    center_x = (new_fc[2] + new_fc[0]) / 2
+                    center_y = (new_fc[3] + new_fc[1]) / 2
+
+                    delta = int((new_fc[2] - new_fc[0])/4)
+                    x_l, y_t, x_r, y_b = new_fc
+                    x_l -= delta
+                    x_r += delta
+                    y_t -= delta
+                    y_b += delta
+                    x_l, x_r, y_t, y_b = FacesRecognition.boundary_conditions(x_l, x_r, y_t, y_b, frame.shape)
+                    photo = [frame[y_t:y_b, x_l:x_r, :]]
+                    for name in student.names[class_name]:
+                        if student.group[class_name][name].face_coordinates is not None:
+
+                            if FacesRecognition.compare_coordinates(name, (center_x, center_y), student, class_name, frame):
+                                if name not in recognized_students:
+                                    student.group[class_name][name].face_coordinates = faces_coordinates[i]
+                                    student.group[class_name][name].face_image = np.array(
+                                        self.from_m1p1(batch_cropped_faces[i]), dtype='uint8').transpose((1, 2, 0))
+                                    recognized_students[i] = name
+
+                                    if student.group[class_name][name].number_of_embeddings < 5:
+                                        student.group[class_name][name].add_new_embeddings(photo)
+
+                                    found_this_person = True
+                                    break
+
+                    if not found_this_person:
+                        self.add_new_person(photo, class_name, student, faces_coordinates[i], batch_cropped_faces[i])
+
+        for name in student.group[class_name]:
+            if name not in recognized_students:
                 student.group[class_name][name].face_coordinates = None
                 student.group[class_name][name].face_image = None
                 student.group[class_name][name].landmarks = None
+
+    def add_new_person(self, photo, class_name, student, faces_coordinates, cropped_face):
+        while self.name_for_new_person in student.names[class_name]:
+            sub_name = self.name_for_new_person.split('_')
+            self.name_for_new_person = sub_name[0] + '_' + str(int(sub_name[1]) + 1)
+        student(photo, self.name_for_new_person, class_name)
+        if self.name_for_new_person in student.group[class_name]:
+            student.group[class_name][self.name_for_new_person].face_coordinates = faces_coordinates
+            student.group[class_name][self.name_for_new_person].face_image = np.array(
+                self.from_m1p1(cropped_face), dtype='uint8').transpose((1, 2, 0))
