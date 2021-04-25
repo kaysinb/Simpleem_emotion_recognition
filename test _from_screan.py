@@ -8,12 +8,13 @@ from src.students import Student
 from src.faces_recognition import FacesRecognition
 from src.pose_estimation import PoseEstimation
 from src.display_text import DisplayText, write_caption
-from src.emotionsStatisticsGUI import show_statistic_window
 from tqdm import tqdm
 from mss import mss
 
+from src.emotionsStatisticsGUI import get_real_time_stat_window
 
-def main(photos_path, video_path=0, show_video=False, save_video=False):
+
+def main(photos_path, video_path=0, show_video=False, save_video=False, real_time_stat=False):
     faces_recognizer = FacesRecognition(resize=0.9, max_face_tilt=10)
     emotions_recognizer = EmotionsRecognition()
     class_name = 'first'
@@ -72,6 +73,12 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
                 frame = pose_estimator(frame, Student, class_name)
                     
                 Student.logging_of_group(class_name)
+                ## This IF block is for real statistic window initialization and
+                ## sending data to it.
+                if real_time_stat == True and i == 0:
+                    queue_for_logs,stat_window = get_real_time_stat_window(Student.get_frame_log(class_name))
+                elif real_time_stat and i>0:
+                    queue_for_logs.put(Student.get_frame_log(class_name))
 
             write_caption(frame, Student, class_name)
 
@@ -94,14 +101,19 @@ def main(photos_path, video_path=0, show_video=False, save_video=False):
 
     cv2.destroyAllWindows()
     
-    show_statistic_window(Student.get_group_log(class_name))
+    if real_time_stat == False:
+        window_queue,window_process = get_real_time_stat_window(Student.get_group_log(class_name))
+    window_queue.close()
 
 
 if __name__ == '__main__':
-    main(video_path=0, photos_path='../../er_test/photos_4', show_video=True, save_video=True)
+    #main(video_path=0, photos_path='../../er_test/photos_4', show_video=True, save_video=True)
     # main(video_path='../../er_test/innopolismeeting.mp4', photos_path='../../er_test/photos_zuzan', show_video=True, save_video=True)
     # main(video_path='../../er_test/test_video.mp4', photos_path='../../er_test/photos_4', show_video=True, save_video=True)
     # main(video_path='../../test_simpleem.mp4', photos_path='../../er_test/photos_3', show_video=True, save_video=True)
-
+     main(video_path='C:\\Users\\Larionov\\simpleEm\\er_test-master\\test_video.mp4', photos_path='C:\\Users\\Larionov\\simpleEm\\er_test-master\\photos\\', 
+          show_video=True, 
+          save_video=True, 
+          real_time_stat=True)
 
 

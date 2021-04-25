@@ -145,13 +145,23 @@ class Student:
         for student_name in cls.group[class_name]:
             cls.group[class_name][student_name].logging()
 
-    def get_student_logs(self):
-        """ Getting total logs for one of the student """
+    def get_student_logs(self, frame_number = 'all'):
+        """ 
+            Getting total logs for one of the student for the whole lesson or
+            only last frame. 
+        """
+        if frame_number == 'all':
+            log_slice = slice(0,None)
+        elif frame_number == 'last':
+            log_slice = slice(-1,None)
+        else:
+            print('Invalid frame_number function argument.')
+            raise ValueError
 
-        time_df = pd.DataFrame(list(Student._logging_time[self.class_name]), columns=['time'])
-        emotion_df = pd.DataFrame(list(self._emotion_logg), columns=self.list_of_emotions)
-        angle_df = pd.DataFrame(list(self._angle_logg), columns=['roll', 'pitch', 'yaw'])
-        onframe_df = pd.DataFrame(list(self._stud_is_on_frame), columns=['is_on_frame'])
+        time_df = pd.DataFrame(list(Student._logging_time[self.class_name][log_slice]), columns=['time'])
+        emotion_df = pd.DataFrame(list(self._emotion_logg[log_slice]), columns=self.list_of_emotions)
+        angle_df = pd.DataFrame(list(self._angle_logg[log_slice]), columns=['roll', 'pitch', 'yaw'])
+        onframe_df = pd.DataFrame(list(self._stud_is_on_frame[log_slice]), columns=['is_on_frame'])
 
         pose_df = pd.concat([time_df, angle_df, onframe_df], axis=1)
         emotion_df = pd.concat([time_df, emotion_df], axis=1)
@@ -163,9 +173,19 @@ class Student:
         """ Getting total log for the whole group in dataframe form """
         total_log = {}
         for student_name in cls.group[class_name]:
-            total_log[student_name] = cls.group[class_name][student_name].get_student_logs()
+            total_log[student_name] = cls.group[class_name][student_name].get_student_logs(frame_number = 'all')
 
         return total_log
+    
+    @classmethod
+    def get_frame_log(cls, class_name):
+        """ Getting last frame log for the whole group in dataframe form """
+        total_log = {}
+        for student_name in cls.group[class_name]:
+            total_log[student_name] = cls.group[class_name][student_name].get_student_logs(frame_number = 'last')
+
+        return total_log
+
 
     @staticmethod
     def comma_sep_str(list_of_str):
