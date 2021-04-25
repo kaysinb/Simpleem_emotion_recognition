@@ -360,7 +360,6 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         
         # ###### Update time graph
         self.pie.update_figure()
-        self.pie.save_to_file()
         
         ###### Update time graph
         self.t_graph.update_figure()
