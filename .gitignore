@@ -3,3 +3,4 @@
 emotion_recognition.ipynb
 simpleem_FER_dataset.ipynb
 testing/
+__pycache__
