@@ -5,7 +5,6 @@ import matplotlib
 # Make sure that we are using QT5
 matplotlib.use('Qt5Agg')
 from PyQt5 import QtCore, QtWidgets, QtGui
-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -56,14 +55,13 @@ class MyPieChart(FigureCanvas):
         for emotion in emotions:
             em_colors.append(emotion_color_dict[emotion])
         self.axes.pie(sizes,labels=emotions, colors = em_colors, pctdistance=0.7, autopct='%1.0f%%', 
-                      explode = explode, startangle = 20, labeldistance=1.2)
+                      explode = explode, startangle = 20, labeldistance=1.2, normalize=True)
         
         self.axes.set_title('Total emotional condition \n of the group', fontweight="bold",
                             pad = 0, color = 'green', fontsize= 10)
         #draw circle
         centre_circle = plt.Circle((0,0),0.50,fc='white')
         self.axes.add_artist(centre_circle)
-        
     
     def get_data_from_dict(self, data_dict):
         group_emotions_sum = None
@@ -273,7 +271,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         # l1 = QtWidgets.QVBoxLayout(self.main_widget)
         self.l = QtWidgets.QGridLayout(self.main_widget)
         
-        self.pie = MyPieChart(self.main_widget, width=2.8, height=2.8, dpi=100, input_data = self.data_dict)
+        self.pie = MyPieChart(self.main_widget, width=3, height=3, dpi=100, input_data = self.data_dict)
         self.t_graph = MyTimeChart(self.main_widget, width=6, height=6, dpi=100,input_data = self.data_dict)
         
         #self.bar_charts = {}

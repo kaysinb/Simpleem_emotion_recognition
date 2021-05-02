@@ -2,20 +2,19 @@ import cv2
 import os
 import numpy as np
 from src.emotion_recognition import EmotionsRecognition
-# from testing.new_students import Student
+# from testing.new_students import Student, PotentialStudent
 # from testing.new_faces_recognition import FacesRecognition
-from src.students import Student
+from src.students import Student, PotentialStudent
 from src.faces_recognition import FacesRecognition
 from src.pose_estimation import PoseEstimation
 from src.display_text import DisplayText, write_caption
-#from src.emotionsStatisticsGUI import show_statistic_window
+# from src.emotionsStatisticsGUI import show_statistic_window
 from tqdm import tqdm
-
 
 from src.emotionsStatisticsGUI import get_real_time_stat_window
 
 
-def main(photos_path, video_path=0, show_video=False, save_video=False, real_time_stat=False ):
+def main(photos_path, video_path=0, show_video=False, save_video=False, real_time_stat=False):
     """
     Real_time_stat is new parameter for real time statistics and graphs window activation.
     """
@@ -27,7 +26,8 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
     Student.detector = faces_recognizer
     Student.group_initialization(class_name)
     Student.recognize_all_students[class_name] = True
-
+    if Student.recognize_all_students[class_name]:
+        PotentialStudent.potential_group_initialization(class_name)
 
     for one_student in students_dirs:
         student_photos = []
@@ -36,13 +36,13 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
             image = cv2.imread(one_student.path + '/' + file_name)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             student_photos.append(image)
-        Student(student_photos, one_student.name, class_name)
+        Student(student_photos, class_name, one_student.name)
 
     # Create a VideoCapture object and read from input file
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
-    out_fps = 15
-    frame_step = fps//out_fps
+    out_fps = 10
+    frame_step = fps // out_fps
 
     if video_path == 0:
         cap.set(3, 1280)
@@ -59,10 +59,11 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
     if save_video:
         # Create a VideoCapture object and read from input file
         fourcc = cv2.VideoWriter_fourcc('F', 'M', 'P', '4')
-        out_video = cv2.VideoWriter('./testing/output_video_5.mp4', fourcc, fps//frame_step, (text_displayer.full_frame_shape[1],
-                                                                                    text_displayer.full_frame_shape[0]))
+        out_video = cv2.VideoWriter('./testing/output_video_5.mp4', fourcc, fps // frame_step,
+                                    (text_displayer.full_frame_shape[1],
+                                     text_displayer.full_frame_shape[0]))
 
-    firs_frame = 0 # first frame
+    firs_frame = 0  # first frame
     last_frame = None
 
     if last_frame is None:
@@ -78,8 +79,8 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
     i = 0  # counter
     text = 'hi'
 
-    for _ in tqdm(range(10000)):
-    # while cap.isOpened() and firs_frame + i < last_frame:
+    # for _ in tqdm(range(3000)):
+    while cap.isOpened() and firs_frame + i < last_frame:
         flag = False
         if i % stride == 0:
             flag = True
@@ -89,24 +90,24 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
         if ret and i % frame_step == 0:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if flag:
-                faces_recognizer(frame, Student, class_name)
+                faces_recognizer(frame, class_name)
                 emotions_recognizer(Student, class_name)
-                frame = pose_estimator(frame, Student, class_name)
-                    
+                pose_estimator(frame, Student, class_name)
+
                 Student.logging_of_group(class_name)
-                
+
                 ## This IF block is for real statistic window initialization and
                 ## sending data to it.
-                if real_time_stat == True and i == 0:
-                    queue_for_logs,stat_window = get_real_time_stat_window(Student.get_frame_log(class_name))
-                elif real_time_stat and i>0:
+
+                if real_time_stat and i == 60:
+                    queue_for_logs, stat_window = get_real_time_stat_window(Student.get_frame_log(class_name))
+                elif real_time_stat and i > 60:
                     queue_for_logs.put(Student.get_frame_log(class_name))
 
 
             write_caption(frame, Student, class_name)
-
+            frame = pose_estimator.plot_pose(frame, Student, class_name)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
             recommendation, attendance = Student.get_recommendation(class_name)
             full_frame = text_displayer.show_text(frame, recommendation, attendance)
 
@@ -114,8 +115,9 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
                 out_video.write(full_frame)
 
             if show_video:
-                scale = 2
-                cv2.imshow('meeting', cv2.resize(full_frame, (full_frame.shape[1]//scale, full_frame.shape[0]//scale)))
+                scale = 1.5
+                cv2.imshow('meeting',
+                           cv2.resize(full_frame, (int(full_frame.shape[1]/scale), int(full_frame.shape[0]/scale))))
 
             # Press Q on keyboard to  exit
             if cv2.waitKey(2) & 0xFF == ord('q'):
@@ -124,22 +126,15 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
 
     cap.release()
     cv2.destroyAllWindows()
-    
 
-    if real_time_stat == False:
-        window_queue,window_process = get_real_time_stat_window(Student.get_group_log(class_name))
-    window_queue.close()
-    
-    
-    
-    
+    if not real_time_stat:
+        window_queue, window_process = get_real_time_stat_window(Student.get_group_log(class_name))
+        window_queue.close()
 
 
 if __name__ == '__main__':
-    #main(video_path=0, photos_path='../../er_test/photos_4', show_video=True, save_video=True)
+    # main(video_path=0, photos_path='../../er_test/photos_4', show_video=True, save_video=True)
     # main(video_path='../../er_test/innopolismeeting.mp4', photos_path='../../er_test/photos_zuzan', show_video=True, save_video=True)
-    main(video_path='C:\\Users\\Larionov\\simpleEm\\er_test-master\\test_video.mp4', photos_path='C:\\Users\\Larionov\\simpleEm\\er_test-master\\photos\\', show_video=True, save_video=True, real_time_stat = True)
-    # main(video_path='../../test_simpleem.mp4', photos_path='../../er_test/photos_3', show_video=True, save_video=True)
-
-
-
+    # main(video_path='C:\\Users\\Larionov\\simpleEm\\er_test-master\\test_video.mp4', photos_path='C:\\Users\\Larionov\\simpleEm\\er_test-master\\photos\\', show_video=True, save_video=True, real_time_stat = True)
+    main(video_path='../../er_test/test_video.mp4', photos_path='../../er_test/photos_4', show_video=True, save_video=True,
+         real_time_stat=True)

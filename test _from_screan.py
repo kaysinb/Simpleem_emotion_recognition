@@ -14,7 +14,7 @@ from mss import mss
 from src.emotionsStatisticsGUI import get_real_time_stat_window
 
 
-def main(photos_path, video_path=0, show_video=False, save_video=False, real_time_stat=False):
+def main(photos_path, show_video=False, save_video=False, real_time_stat=False):
     faces_recognizer = FacesRecognition(resize=0.9, max_face_tilt=10)
     emotions_recognizer = EmotionsRecognition()
     class_name = 'first'
@@ -35,11 +35,11 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
         Student(student_photos, one_student.name, class_name)
 
     # Create a VideoCapture object and read from input file
-    bounding_box = {'top': 1, 'left': 50, 'width': 1900, 'height': 1000}
+    bounding_box = {'top': 10, 'left': 100, 'width': 1800, 'height': 1020}
     sct = mss()
     sct_frame = sct.grab(bounding_box)
     frame = np.array(sct_frame)[:,:,:3].copy()
-    fps = 25
+    fps = 15
     out_fps = 15
     frame_step = fps//out_fps
     pose_estimator = PoseEstimation()
@@ -103,7 +103,7 @@ def main(photos_path, video_path=0, show_video=False, save_video=False, real_tim
     
     if real_time_stat == False:
         window_queue,window_process = get_real_time_stat_window(Student.get_group_log(class_name))
-    window_queue.close()
+
 
 
 if __name__ == '__main__':
@@ -111,9 +111,6 @@ if __name__ == '__main__':
     # main(video_path='../../er_test/innopolismeeting.mp4', photos_path='../../er_test/photos_zuzan', show_video=True, save_video=True)
     # main(video_path='../../er_test/test_video.mp4', photos_path='../../er_test/photos_4', show_video=True, save_video=True)
     # main(video_path='../../test_simpleem.mp4', photos_path='../../er_test/photos_3', show_video=True, save_video=True)
-     main(video_path='C:\\Users\\Larionov\\simpleEm\\er_test-master\\test_video.mp4', photos_path='C:\\Users\\Larionov\\simpleEm\\er_test-master\\photos\\', 
-          show_video=True, 
-          save_video=True, 
-          real_time_stat=True)
+    main(photos_path='../../er_test/photos_4', show_video=True, save_video=False, real_time_stat=True)
 
 

@@ -3,7 +3,7 @@ import os
 import numpy as np
 from collections import deque
 from pose_estimation_utils.TDDFA_ONNX import TDDFA_ONNX
-from pose_estimation_utils.utils.pose import viz_pose
+from pose_estimation_utils.utils.pose import viz_pose, plot_pose_box
 
 
 class PoseEstimation:
@@ -18,8 +18,8 @@ class PoseEstimation:
 
     def __call__(self, frame, student, class_name):
         self.pose_estimation(frame, student, class_name)
-        frame_with_pose = self.calculate_angles(frame, student, class_name)
-        return frame_with_pose
+        self.calculate_angles(frame, student, class_name)
+
 
     def pose_estimation(self, frame, student, class_name):
         frame_bgr = frame[..., ::-1]
@@ -73,11 +73,22 @@ class PoseEstimation:
             if person.param_lst is not None:
                 ver_ave = np.mean(person.landmarks, axis=0)
                 param_ave = np.mean(person.param_lst, axis=0)
-                frame_with_pose, angles = viz_pose(frame_with_pose, param_ave, ver_ave, person.student_mark)
+                P, angles = viz_pose(param_ave)
                 person.angles = angles
+                person.P = P
+                person.ver = ver_ave
             else:
+                person.angles = None
+                person.P = None
                 person.angles = {'yaw': None, 'pitch': None, 'roll': None}
 
+    @staticmethod
+    def plot_pose(frame, student, class_name):
+        frame_with_pose = frame.copy()
+        for name in student.group[class_name]:
+            person = student.group[class_name][name]
+            if person.P is not None and person.ver is not None:
+                frame_with_pose = plot_pose_box(frame_with_pose, person.P, person.ver, person.student_mark)
         return frame_with_pose
 
 

@@ -124,8 +124,7 @@ def plot_pose_box(img, P, ver, color, line_width=2):
     return img
 
 
-def viz_pose(img, param_lst, ver, color):
+def viz_pose(param_lst):
     P, pose = calc_pose(param_lst)
-    img = plot_pose_box(img, P, ver, color)
     angles = {'yaw': pose[0], 'pitch': pose[1], 'roll': pose[2]}
-    return img, angles
+    return P, angles
